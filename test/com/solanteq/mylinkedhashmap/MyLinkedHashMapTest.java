@@ -3,8 +3,7 @@ package com.solanteq.mylinkedhashmap;
 import org.junit.Before;
 import org.junit.jupiter.api.*;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -149,6 +148,37 @@ class MyLinkedHashMapTest {
 
         map.clear();
         assertTrue(map.isEmpty());
+    }
+
+    @Test
+    void keySet(){
+        String[] vals = {"1", "2", "3", "4", "5", "6", "7", "1", "2", "3"};
+        int keyGap = 7;
+        for(int i = 0; i < vals.length; i+=keyGap){
+            map.put(i, vals[i]);
+        }
+
+        Set<Integer> keys = map.keySet();
+        int keyIdx = 0;
+        for(Integer key: keys){
+            assertEquals(keyIdx, key);
+            keyIdx += keyGap;
+        }
+    }
+
+    @Test
+    void values(){
+        String[] vals = {"1", "2", "3", "4", "5", "6", "7", "1", "2", "3"};
+        for(int i = 0; i < vals.length; i++){
+            map.put(i + 1, vals[i]);
+        }
+
+        Iterator<String> mapValsIterator = map.values().iterator();
+        int valsIdx = 0;
+        while(mapValsIterator.hasNext()){
+            assertEquals(vals[valsIdx], mapValsIterator.next());
+            valsIdx++;
+        }
     }
 
     @Test

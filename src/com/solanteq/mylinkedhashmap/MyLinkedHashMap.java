@@ -10,23 +10,23 @@ public class MyLinkedHashMap<K, V> extends AbstractMap<K, V> {
     private int bucketSize;
     private int mapSize;
 
-    private Set<K> keys;
-    private Collection<V> values;
+    private MyEntry<K, V> head;
+    private MyEntry<K, V> tail;
 
     public MyLinkedHashMap(){
         bucketSize = 16;
         mapSize = 0;
         buckets = new MyEntry[bucketSize];
-
-        keys = new HashSet<>();
-        values = new ArrayList<>();
     }
 
     private class MyEntry<K, V> implements Map.Entry<K, V>{
         private final K key;
         private V value;
-        private MyEntry<K, V> next;
-        private MyEntry<K, V> prev;
+        private MyEntry<K, V> nextInBucket;
+        private MyEntry<K, V> prevInBucket;
+
+        private MyEntry<K, V> globalNext;
+        private MyEntry<K, V> globalPrev;
 
         public MyEntry(K key, V value){
             this.key = key;
@@ -45,20 +45,36 @@ public class MyLinkedHashMap<K, V> extends AbstractMap<K, V> {
             return this.value = value;
         }
 
-        public MyEntry<K, V> getNext() {
-            return next;
+        public MyEntry<K, V> getNextInBucket() {
+            return nextInBucket;
         }
 
-        public void setNext(MyEntry<K, V> next) {
-            this.next = next;
+        public void setNextInBucket(MyEntry<K, V> nextInBucket) {
+            this.nextInBucket = nextInBucket;
         }
 
-        public MyEntry<K, V> getPrev() {
-            return prev;
+        public MyEntry<K, V> getPrevInBucket() {
+            return prevInBucket;
         }
 
-        public void setPrev(MyEntry<K, V> prev) {
-            this.prev = prev;
+        public void setPrevInBucket(MyEntry<K, V> prevInBucket) {
+            this.prevInBucket = prevInBucket;
+        }
+
+        public MyEntry<K, V> getGlobalNext() {
+            return globalNext;
+        }
+
+        public void setGlobalNext(MyEntry<K, V> globalNext) {
+            this.globalNext = globalNext;
+        }
+
+        public MyEntry<K, V> getGlobalPrev() {
+            return globalPrev;
+        }
+
+        public void setGlobalPrev(MyEntry<K, V> globalPrev) {
+            this.globalPrev = globalPrev;
         }
 
         @Override
@@ -83,24 +99,18 @@ public class MyLinkedHashMap<K, V> extends AbstractMap<K, V> {
 
     @Override
     public boolean isEmpty() {
-        for(MyEntry<K,V> entry: buckets){
-            if(entry != null)
-                return false;
-        }
-        return true;
+        return head == null;
     }
 
     @Override
     public boolean containsValue(Object value) {
-        for(MyEntry<K,V> entry: buckets){
-            MyEntry<K, V> curEntry = entry;
+        MyEntry<K, V> curEntry = head;
 
-            while(curEntry != null) {
-                if(curEntry.getValue().equals(value))
-                    return true;
+        while(curEntry != null) {
+            if(curEntry.getValue().equals(value))
+                return true;
 
-                curEntry = curEntry.getNext();
-            }
+            curEntry = curEntry.getGlobalNext();
         }
         return false;
     }
@@ -112,7 +122,7 @@ public class MyLinkedHashMap<K, V> extends AbstractMap<K, V> {
             if(curEntry.getKey().equals(key))
                 return true;
 
-            curEntry = curEntry.getNext();
+            curEntry = curEntry.getNextInBucket();
         }
         return false;
     }
@@ -128,24 +138,40 @@ public class MyLinkedHashMap<K, V> extends AbstractMap<K, V> {
     @Override
     public V put(K key, V value) {
         MyEntry<K, V> curEntry = buckets[hash((K) key)];
+
         if(curEntry == null){
-            buckets[hash((K) key)] = new MyEntry<>(key, value);
+            MyEntry<K, V> newEntry = new MyEntry<>(key, value);
+            buckets[hash((K) key)] = newEntry;
             mapSize++;
+
+            if(isEmpty()){
+                head = newEntry;
+                tail = head;
+            } else {
+                newEntry.setGlobalPrev(tail);
+                tail.setGlobalNext(newEntry);
+                tail = newEntry;
+            }
+            return value;
         } else {
             curEntry = getByKey((K) key);
-            if(curEntry != null && curEntry.getKey().equals(key)){
+            if(curEntry.getKey().equals(key)){
                 V oldValue = curEntry.getValue();
                 curEntry.setValue(value);
                 return oldValue;
             } else {
                 mapSize++;
                 MyEntry<K, V> newEntry = new MyEntry<>(key, value);
-                curEntry.setNext(newEntry);
-                newEntry.setPrev(curEntry);
+                curEntry.setNextInBucket(newEntry);
+                newEntry.setPrevInBucket(curEntry);
+
+                newEntry.setGlobalPrev(tail);
+                tail.setGlobalNext(newEntry);
+                tail = newEntry;
+
                 return value;
             }
         }
-        return null;
     }
 
     @Override
@@ -153,14 +179,29 @@ public class MyLinkedHashMap<K, V> extends AbstractMap<K, V> {
         MyEntry<K, V> entry = getByKey((K) key);
         if(entry != null && entry.getKey().equals(key)){
             mapSize--;
-            if(entry.getPrev() == null && entry.getNext() == null){
+
+//            Remove in specific bucket
+            if(entry.getPrevInBucket() == null && entry.getNextInBucket() == null){
                 buckets[hash((K) key)] = null;
             } else {
-                MyEntry<K, V> prev = entry.getPrev();
-                MyEntry<K, V> next = entry.getNext();
+                MyEntry<K, V> prev = entry.getPrevInBucket();
+                MyEntry<K, V> next = entry.getNextInBucket();
 
+                prev.setNextInBucket(next);
                 if(next != null)
-                    next.setPrev(prev);
+                    next.setPrevInBucket(prev);
+            }
+
+//            Remove in global list
+            if(entry.getGlobalPrev() == null && entry.getGlobalNext() == null){
+                head = tail = null;
+            } else {
+                MyEntry<K, V> prev = entry.getGlobalPrev();
+                MyEntry<K, V> next = entry.getGlobalNext();
+
+                prev.setGlobalNext(next);
+                if(next != null)
+                    next.setGlobalPrev(prev);
             }
             return entry.getValue();
         }
@@ -177,26 +218,41 @@ public class MyLinkedHashMap<K, V> extends AbstractMap<K, V> {
     @Override
     public void clear() {
         mapSize = 0;
+        head = tail = null;
         buckets = new MyEntry[bucketSize];
     }
 
     @Override
     public Set<K> keySet() {
-        return this.keys;
+        // ToDo Write own impl for LinkedHashSet
+        Set<K> keys = new LinkedHashSet<>();
+        MyEntry<K, V> elemPoint = head;
+        while(elemPoint != null){
+            keys.add(elemPoint.getKey());
+            elemPoint = elemPoint.getGlobalNext();
+        }
+        return keys;
     }
 
     @Override
     public Collection<V> values() {
-        return this.values;
+        Collection<V> values = new ArrayList<>();
+        MyEntry<K, V> elemPoint = head;
+        while(elemPoint != null){
+            values.add(elemPoint.getValue());
+            elemPoint = elemPoint.getGlobalNext();
+        }
+        return values;
     }
 
     public Set<Map.Entry<K, V>> entrySet() {
-        Set<Map.Entry<K, V>> res = new HashSet<>();
+        // ToDo Write own impl for LinkedHashSet
+        Set<Map.Entry<K, V>> res = new LinkedHashSet<>();
         for(MyEntry bucetElem: buckets){
             MyEntry<K, V> entry = bucetElem;
             while(entry != null){
                 res.add(entry);
-                entry = entry.getNext();
+                entry = entry.getGlobalNext();
             }
         }
         return res;
@@ -212,11 +268,21 @@ public class MyLinkedHashMap<K, V> extends AbstractMap<K, V> {
     public V putIfAbsent(K key, V value) {
         MyEntry<K, V> entry = getByKey((K) key);
         if(entry == null){
+            MyEntry<K, V> newEntry = new MyEntry<>(key, value);
             buckets[hash((K) key)] = new MyEntry(key, value);
+
+            if(head == null){
+                head = tail = newEntry;
+            }
         } else if(! entry.getKey().equals(key)) {
             MyEntry<K, V> newEntry = new MyEntry<>(key, value);
-            newEntry.setPrev(entry);
-            entry.setNext(newEntry);
+            entry.setNextInBucket(newEntry);
+            newEntry.setPrevInBucket(entry);
+
+
+            newEntry.setGlobalPrev(tail);
+            tail.setGlobalNext(newEntry);
+            tail = newEntry;
         }
 
         return value;
@@ -242,7 +308,7 @@ public class MyLinkedHashMap<K, V> extends AbstractMap<K, V> {
             if(entry.getKey().equals(key)){
                 return entry;
             }
-            entry = entry.getNext();
+            entry = entry.getNextInBucket();
         }
         return null;
     }
